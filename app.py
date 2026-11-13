@@ -36,7 +36,11 @@ os.environ.setdefault("GOOGLE_GENAI_USE_VERTEXAI", "FALSE")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_FILE = os.path.join(BASE_DIR, "enterprise.db")
 POLICY_DIR = os.path.join(BASE_DIR, "policies")
-MODEL = "gemini-2.5-flash"
+try:
+    MODEL = st.secrets.get("GEMINI_MODEL", None)  # optional override in Secrets
+except Exception:
+    MODEL = None
+MODEL = MODEL or os.environ.get("GEMINI_MODEL") or "gemini-3.5-flash"
 
 
 # ----------------------------------------------------------------------------
@@ -315,9 +319,16 @@ def ask(kind: str, session_id: str, prompt: str) -> str:
     runner = get_runner(kind)
     msg = types.Content(role="user", parts=[types.Part.from_text(text=prompt)])
     texts = []
-    for event in runner.run(user_id="user", session_id=session_id, new_message=msg):
-        if event.is_final_response() and event.content:
-            texts += [p.text for p in event.content.parts if getattr(p, "text", None)]
+    try:
+        for event in runner.run(user_id="user", session_id=session_id, new_message=msg):
+            if event.is_final_response() and event.content:
+                texts += [p.text for p in event.content.parts if getattr(p, "text", None)]
+    except Exception as e:
+        # Walk to the root cause so the real API message (model/key/quota) is visible
+        root = e
+        while root.__cause__ or root.__context__:
+            root = root.__cause__ or root.__context__
+        return f"⚠️ Model call failed ({MODEL}): {type(root).__name__}: {root}"
     return mask_pii("".join(texts)) or "No response generated."
 
 
