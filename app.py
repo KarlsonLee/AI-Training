@@ -325,10 +325,22 @@ def ask(kind: str, session_id: str, prompt: str) -> str:
                 texts += [p.text for p in event.content.parts if getattr(p, "text", None)]
     except Exception as e:
         # Walk to the root cause so the real API message (model/key/quota) is visible
-        root = e
-        while root.__cause__ or root.__context__:
-            root = root.__cause__ or root.__context__
-        return f"⚠️ Model call failed ({MODEL}): {type(root).__name__}: {root}"
+        found, queue = [], [e]
+        while queue and len(found) < 10:
+            ex = queue.pop(0)
+            if any(ex is f for f in found):
+                continue
+            found.append(ex)
+            for attr in ("error", "original_error", "__cause__", "__context__"):
+                n = getattr(ex, attr, None)
+                if isinstance(n, BaseException):
+                    queue.append(n)
+            queue += [a for a in getattr(ex, "args", ()) if isinstance(a, BaseException)]
+        lines = []
+        for ex in found:
+            code = getattr(ex, "code", getattr(ex, "status_code", ""))
+            lines.append(f"- {type(ex).__name__} {code}: {getattr(ex, 'message', None) or ex}")
+        return f"⚠️ Model call failed (model: {MODEL})\n" + "\n".join(lines)
     return mask_pii("".join(texts)) or "No response generated."
 
 
