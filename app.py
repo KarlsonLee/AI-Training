@@ -36,11 +36,7 @@ os.environ.setdefault("GOOGLE_GENAI_USE_VERTEXAI", "FALSE")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_FILE = os.path.join(BASE_DIR, "enterprise.db")
 POLICY_DIR = os.path.join(BASE_DIR, "policies")
-try:
-    MODEL = st.secrets.get("GEMINI_MODEL", None)  # optional override in Secrets
-except Exception:
-    MODEL = None
-MODEL = MODEL or os.environ.get("GEMINI_MODEL") or "gemini-3.5-flash"
+MODEL = "gemini-3.5-flash"
 
 
 # ----------------------------------------------------------------------------
@@ -319,28 +315,9 @@ def ask(kind: str, session_id: str, prompt: str) -> str:
     runner = get_runner(kind)
     msg = types.Content(role="user", parts=[types.Part.from_text(text=prompt)])
     texts = []
-    try:
-        for event in runner.run(user_id="user", session_id=session_id, new_message=msg):
-            if event.is_final_response() and event.content:
-                texts += [p.text for p in event.content.parts if getattr(p, "text", None)]
-    except Exception as e:
-        # Walk to the root cause so the real API message (model/key/quota) is visible
-        found, queue = [], [e]
-        while queue and len(found) < 10:
-            ex = queue.pop(0)
-            if any(ex is f for f in found):
-                continue
-            found.append(ex)
-            for attr in ("error", "original_error", "__cause__", "__context__"):
-                n = getattr(ex, attr, None)
-                if isinstance(n, BaseException):
-                    queue.append(n)
-            queue += [a for a in getattr(ex, "args", ()) if isinstance(a, BaseException)]
-        lines = []
-        for ex in found:
-            code = getattr(ex, "code", getattr(ex, "status_code", ""))
-            lines.append(f"- {type(ex).__name__} {code}: {getattr(ex, 'message', None) or ex}")
-        return f"⚠️ Model call failed (model: {MODEL})\n" + "\n".join(lines)
+    for event in runner.run(user_id="user", session_id=session_id, new_message=msg):
+        if event.is_final_response() and event.content:
+            texts += [p.text for p in event.content.parts if getattr(p, "text", None)]
     return mask_pii("".join(texts)) or "No response generated."
 
 
