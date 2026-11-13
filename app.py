@@ -395,6 +395,7 @@ with tab_chat:
     prompt = st.session_state.pop("pending", None) or st.chat_input(
         "Ask about orders, shipments, stock, returns or policy...")
     if prompt:
+        prompt = mask_pii(prompt)  # mask first, so the UI, history and model only see redacted text
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
